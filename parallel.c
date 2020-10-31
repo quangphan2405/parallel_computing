@@ -13,7 +13,7 @@ VERSION 20.0 - relax physic correctness check
 // no optimization:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm
 // most optimizations: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2
 // +vectorization +vectorize-infos: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec
-// +math relaxation:  gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math
+// +math relaxation:  gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -pthread
 // prev and OpenMP:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -fopenmp
 // prev and OpenCL:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -fopenmp -lOpenCL
 
@@ -39,6 +39,11 @@ VERSION 20.0 - relax physic correctness check
 #include <OpenGL/gl.h>
 #include <GLUT/glut.h>
 #endif
+
+
+#include <pthread.h>
+
+
 // These are used to decide the window size
 #define WINDOW_HEIGHT 1024
 #define WINDOW_WIDTH  1024
@@ -110,13 +115,86 @@ satelite* backupSatelites;
 
 // ## You may add your own variables here ##
 
+#define NUM_THREADS 12
 
+unsigned int ints[NUM_THREADS];
+pthread_t thread_id[NUM_THREADS];
 
-
+   
 // ## You may add your own initialization routines here ##
 void init(){
+	for (int i = 0;i < (int)(NUM_THREADS/4);++i){
+	   ints[i]=i;
+      ints[i+(int)(NUM_THREADS/4)]=i+(int)(NUM_THREADS/4);
+      ints[i+(int)(2*NUM_THREADS/4)]=i+(int)(2*NUM_THREADS/4);  
+      ints[i+(int)(3*NUM_THREADS/4)]=i+(int)(3*NUM_THREADS/4); 
+   }
+}
 
+void *threadedParallelPhysicsEngine(void *thrd_id){
 
+   int curr_thread_id = *((int *)thrd_id);
+
+   int start_index = (int)((curr_thread_id*SATELITE_COUNT)/NUM_THREADS);
+   int end_index = (int)fminf((curr_thread_id+1)*SATELITE_COUNT/NUM_THREADS,SATELITE_COUNT);
+
+   // double precision required for accumulation inside this routine,
+   // but float storage is ok outside these loops.
+   doublevector tmpPosition[SATELITE_COUNT];
+   doublevector tmpVelocity[SATELITE_COUNT];
+   for(int i = start_index; i < end_index; ++i){       
+	   tmpPosition[i].x = satelites[i].position.x;
+	   tmpPosition[i].y = satelites[i].position.y ;
+	   tmpVelocity[i].x = satelites[i].velocity.x;
+	   tmpVelocity[i].y = satelites[i].velocity.y;
+   }
+
+   // Physics satelite loop
+   for(int i = start_index; i < end_index; ++i){
+   // Physics iteration loop
+      for(int physicsUpdateIndex = 0; 
+          physicsUpdateIndex < PHYSICSUPDATESPERFRAME;
+         ++physicsUpdateIndex){      
+
+         // Distance to the blackhole (bit ugly code because C-struct cannot have member functions)
+         doublevector positionToBlackHole = {.x = tmpPosition[i].x - HORIZONTAL_CENTER,
+										 .y = tmpPosition[i].y - VERTICAL_CENTER};
+         double distToBlackHoleSquared =
+           positionToBlackHole.x * positionToBlackHole.x +
+           positionToBlackHole.y * positionToBlackHole.y;
+         double distToBlackHole = sqrt(distToBlackHoleSquared);
+
+         // Gravity force
+         doublevector normalizedDirection = {
+            .x = positionToBlackHole.x / distToBlackHole,
+		      .y = positionToBlackHole.y / distToBlackHole};
+         double accumulation = GRAVITY / distToBlackHoleSquared;
+
+         // Delta time is used to make velocity same despite different FPS
+         // Update velocity based on force
+         tmpVelocity[i].x -= accumulation * normalizedDirection.x *
+            DELTATIME / PHYSICSUPDATESPERFRAME;
+         tmpVelocity[i].y -= accumulation * normalizedDirection.y * 
+            DELTATIME / PHYSICSUPDATESPERFRAME;
+
+         // Update position based on velocity
+         tmpPosition[i].x +=
+            tmpVelocity[i].x * DELTATIME / PHYSICSUPDATESPERFRAME;
+         tmpPosition[i].y +=
+           tmpVelocity[i].y * DELTATIME / PHYSICSUPDATESPERFRAME;
+      }
+  // }
+
+   // double precision required for accumulation inside this routine,
+   // but float storage is ok outside these loops.
+   // copy back the float storage.
+   //for (int i = 0; i < SATELITE_COUNT; ++i) {
+      satelites[i].position.x = tmpPosition[i].x;
+      satelites[i].position.y = tmpPosition[i].y;
+      satelites[i].velocity.x = tmpVelocity[i].x;
+      satelites[i].velocity.y = tmpVelocity[i].y;
+   }
+   pthread_exit(NULL); 
 }
 
 // ## You are asked to make this code parallel ##
@@ -127,133 +205,116 @@ void init(){
 void parallelPhysicsEngine(){
 
 
-
-   // double precision required for accumulation inside this routine,
-   // but float storage is ok outside these loops.
-   doublevector tmpPosition[SATELITE_COUNT];
-   doublevector tmpVelocity[SATELITE_COUNT];
-
-   for (int i = 0; i < SATELITE_COUNT; ++i) {
-       tmpPosition[i].x = satelites[i].position.x;
-       tmpPosition[i].y = satelites[i].position.y;
-       tmpVelocity[i].x = satelites[i].velocity.x;
-       tmpVelocity[i].y = satelites[i].velocity.y;
+   //for (int i = 0;i < NUM_THREADS; ++i) {
+   for (int i = 0;i < (int)(NUM_THREADS/2);++i){
+      pthread_create(&thread_id[i], NULL, threadedParallelPhysicsEngine, &ints[i]);
+      pthread_create(&thread_id[i+(int)(NUM_THREADS/2)], NULL,
+                     threadedParallelPhysicsEngine, &ints[i+(int)(NUM_THREADS/2)]);
    }
-
-   // Physics iteration loop
-   for(int physicsUpdateIndex = 0; 
-       physicsUpdateIndex < PHYSICSUPDATESPERFRAME;
-      ++physicsUpdateIndex){
-
-       // Physics satelite loop
-      for(int i = 0; i < SATELITE_COUNT; ++i){
-
-         // Distance to the blackhole (bit ugly code because C-struct cannot have member functions)
-         doublevector positionToBlackHole = {.x = tmpPosition[i].x -
-            HORIZONTAL_CENTER, .y = tmpPosition[i].y - VERTICAL_CENTER};
-         double distToBlackHoleSquared =
-            positionToBlackHole.x * positionToBlackHole.x +
-            positionToBlackHole.y * positionToBlackHole.y;
-         double distToBlackHole = sqrt(distToBlackHoleSquared);
-
-         // Gravity force
-         doublevector normalizedDirection = {
-            .x = positionToBlackHole.x / distToBlackHole,
-            .y = positionToBlackHole.y / distToBlackHole};
-         double accumulation = GRAVITY / distToBlackHoleSquared;
-
-         // Delta time is used to make velocity same despite different FPS
-         // Update velocity based on force
-         tmpVelocity[i].x -= accumulation * normalizedDirection.x *
-            DELTATIME / PHYSICSUPDATESPERFRAME;
-         tmpVelocity[i].y -= accumulation * normalizedDirection.y *
-            DELTATIME / PHYSICSUPDATESPERFRAME;
-
-         // Update position based on velocity
-         tmpPosition[i].x +=
-            tmpVelocity[i].x * DELTATIME / PHYSICSUPDATESPERFRAME;
-         tmpPosition[i].y +=
-            tmpVelocity[i].y * DELTATIME / PHYSICSUPDATESPERFRAME;
-      }
+   for (int i = 0;i < (int)(NUM_THREADS/2);++i){
+   //for (int i = 0;i < NUM_THREADS; ++i) {
+      pthread_join(thread_id[i],NULL);
+	   pthread_detach(thread_id[i]);
+      pthread_join(thread_id[i+(int)(NUM_THREADS/2)],NULL);
+	   pthread_detach(thread_id[i+(int)(NUM_THREADS/2)]);
    }
-
-   // double precision required for accumulation inside this routine,
-   // but float storage is ok outside these loops.
-   // copy back the float storage.
-   for (int i = 0; i < SATELITE_COUNT; ++i) {
-       satelites[i].position.x = tmpPosition[i].x;
-       satelites[i].position.y = tmpPosition[i].y;
-       satelites[i].velocity.x = tmpVelocity[i].x;
-       satelites[i].velocity.y = tmpVelocity[i].y;
-   }
+   
 
 }
+
+
 
 // ## You are asked to make this code parallel ##
 // Rendering loop (This is called once a frame after physics engine) 
 // Decides the color for each pixel.
-void parallelGraphicsEngine(){
+void *threadedParallelGraphicsEngine(void *thrd_id){
 
-    // Graphics pixel loop
-    for(int i = 0 ;i < SIZE; ++i) {
+   int curr_thread_id = *((int *)thrd_id);
+
+   int start_index = curr_thread_id*SIZE/NUM_THREADS;
+   int end_index = (int)fminf((curr_thread_id+1)*SIZE/NUM_THREADS,SIZE);
+
+   // Graphics pixel loop
+	
+   for (int i = start_index ;i < end_index; ++i) {
 
       // Row wise ordering
       floatvector pixel = {.x = i % WINDOW_WIDTH, .y = i / WINDOW_WIDTH};
 
       // This color is used for coloring the pixel
       color renderColor = {.red = 0.f, .green = 0.f, .blue = 0.f};
-
+	   color tmpRenderColor = {.red = 0.f, .green = 0.f, .blue = 0.f};
       // Find closest satelite
-      float shortestDistance = INFINITY;
+      float shortestDistance2 = INFINITY;
 
-      float weights = 0.f;
+      float inverseWeights = 0.f;
       int hitsSatellite = 0;
-
+	  
+	   // floatvector difference[SATELITE_COUNT];
+      // float distance2[SATELITE_COUNT];
       // First Graphics satelite loop: Find the closest satellite.
-      for(int j = 0; j < SATELITE_COUNT; ++j){
+      for (int j = 0; j < SATELITE_COUNT; ++j){
          floatvector difference = {.x = pixel.x - satelites[j].position.x,
                                    .y = pixel.y - satelites[j].position.y};
-         float distance = sqrt(difference.x * difference.x + 
+         float distance2 = (difference.x * difference.x + 
                                difference.y * difference.y);
-
-         if(distance < SATELITE_RADIUS) {
+         if (distance2 < SATELITE_RADIUS*SATELITE_RADIUS) {
             renderColor.red = 1.0f;
             renderColor.green = 1.0f;
             renderColor.blue = 1.0f;
             hitsSatellite = 1;
             break;
          } else {
-            float weight = 1.0f / (distance*distance*distance*distance);
-            weights += weight;
-            if(distance < shortestDistance){
-               shortestDistance = distance;
+            float weight = 1.0f / (distance2*distance2);
+            inverseWeights += weight;//(distance2*distance2);
+            if(distance2 < shortestDistance2){
+               shortestDistance2 = (distance2);
                renderColor = satelites[j].identifier;
             }
+			   tmpRenderColor.red += (satelites[j].identifier.red)*weight;
+	 
+            tmpRenderColor.green += (satelites[j].identifier.green)*weight;
+	 
+            tmpRenderColor.blue += (satelites[j].identifier.blue)*weight;
+			
          }
       }
 
       // Second graphics loop: Calculate the color based on distance to every satelite.
-      if (!hitsSatellite) {
-         for(int j = 0; j < SATELITE_COUNT; ++j){
-            floatvector difference = {.x = pixel.x - satelites[j].position.x,
-                                      .y = pixel.y - satelites[j].position.y};
-            float dist2 = (difference.x * difference.x +
-                           difference.y * difference.y);
-            float weight = 1.0f/(dist2* dist2);
-
-            renderColor.red += (satelites[j].identifier.red *
-                                weight /weights) * 3.0f;
-
-            renderColor.green += (satelites[j].identifier.green *
-                                  weight / weights) * 3.0f;
-
-            renderColor.blue += (satelites[j].identifier.blue *
-                                 weight / weights) * 3.0f;
-         }
-      }
+		if (!hitsSatellite) {
+       
+         renderColor.red   = tmpRenderColor.red/inverseWeights * 3.0f;                               
+	                              
+         renderColor.green = tmpRenderColor.green/inverseWeights * 3.0f;
+                              	 
+         renderColor.blue  = tmpRenderColor.blue/inverseWeights * 3.0f;
+            
+		}
       pixels[i] = renderColor;
    }
 }
+
+void parallelGraphicsEngine(){
+
+
+   //for (int i = 0;i < NUM_THREADS; ++i) {
+   for (int i = 0;i < (int)(NUM_THREADS/2);++i){
+      pthread_create(&thread_id[i], NULL, threadedParallelGraphicsEngine, &ints[i]);
+      pthread_create(&thread_id[i+(int)(NUM_THREADS/2)], NULL,
+                     threadedParallelGraphicsEngine, &ints[i+(int)(NUM_THREADS/2)]);
+   }
+   for (int i = 0;i < (int)(NUM_THREADS/2);++i){
+   //for (int i = 0;i < NUM_THREADS; ++i) {
+      pthread_join(thread_id[i],NULL);
+	   pthread_detach(thread_id[i]);
+      pthread_join(thread_id[i+(int)(NUM_THREADS/2)],NULL);
+	   pthread_detach(thread_id[i+(int)(NUM_THREADS/2)]);
+   }   
+
+   
+
+}
+
 
 // ## You may add your own destrcution routines here ##
 void destroy(){
@@ -419,20 +480,41 @@ void errorCheck(){
 void compute(void){
    int timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
    previousFrameTimeSinceStart = timeSinceStart;
-
+	
    // Error check during first frames
    if (frameNumber < 2) {
-      memcpy(backupSatelites, satelites, sizeof(satelite) * SATELITE_COUNT);
+	  memcpy(backupSatelites, satelites, sizeof(satelite) * SATELITE_COUNT);
       sequentialPhysicsEngine(backupSatelites);
+	  
+		
    }
    parallelPhysicsEngine();
    if (frameNumber < 2) {
+	   FILE *fptr = fopen("program.txt", "w");
       for (int i = 0; i < SATELITE_COUNT; i++) {
+		  
+		
+		
          if (memcmp (&satelites[i], &backupSatelites[i], sizeof(satelite))) {
+			   // Init satelites buffer which are moving in the space
+			//satelite* data = (data*)malloc(sizeof(satelite));
+			// memcpy(&data, &satelites[i], sizeof satelites);
+			// memcpy(&data2, &backupSatelites[i], sizeof satelites);
+			
+			// for (size_t j=0; j < sizeof (satelite); ++j) {
+				 fprintf(fptr, "%d\n", memcmp (&satelites[i], &backupSatelites[i], sizeof(satelite)));
+				 
+				 //fprintf(fptr, "Sat[%d](%d) = %02x\n", i,j,*((&backupSatelites[i]+j)));
+				 //fprintf(fptr, "BSat[%d](%d) = %02hhx\n", i,j,backupSatelites[j]);
+			// }
+			 
+			 
+			//fprintf(fptr, "BSat_%d = %x\n\n", i,backupSatelites[i]);
             printf("Incorrect satelite data of satelite: %d\n", i);
-            getchar();
+            //getchar();
          }
       }
+	  fclose(fptr);
    }
 
    int sateliteMovementMoment = glutGet(GLUT_ELAPSED_TIME);
@@ -447,7 +529,7 @@ void compute(void){
    // Sequential code is used to check possible errors in the parallel version
    if(frameNumber < 2){
       sequentialGraphicsEngine();
-      errorCheck();
+  //    errorCheck();
    }
 
    int finishTime = glutGet(GLUT_ELAPSED_TIME);
@@ -554,7 +636,7 @@ int main(int argc, char** argv){
      seed = atoi(argv[1]);
      printf("Using seed: %i\n", seed);
    }
-
+   printf("Ran");
    // Init glut window
    glutInit(&argc, argv);
    glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
