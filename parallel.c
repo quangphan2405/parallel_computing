@@ -13,13 +13,9 @@ VERSION 20.0 - relax physic correctness check
 // no optimization:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm
 // most optimizations: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2
 // +vectorization +vectorize-infos: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec
-// +math relaxation:  gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math
-// +avx2: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2
-// +fma: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma
-// +pthread: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -pthread
-// +unroll-loops: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -pthread -funroll-loops
-// prev and OpenMP:   prev + '-fopenmp'
-// prev and OpenCL:   prev + '-fopenmp -lOpenCL'
+// +math relaxation:  gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -pthread
+// prev and OpenMP:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -fopenmp
+// prev and OpenCL:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -fopenmp -lOpenCL
 
 // Example compilation on macos X
 // no optimization:   gcc -o parallel parallel.c -std=c99 -framework GLUT -framework OpenGL
@@ -43,7 +39,10 @@ VERSION 20.0 - relax physic correctness check
 #include <OpenGL/gl.h>
 #include <GLUT/glut.h>
 #endif
+
+
 #include <pthread.h>
+
 
 // These are used to decide the window size
 #define WINDOW_HEIGHT 1024
@@ -124,14 +123,12 @@ pthread_t thread_id[NUM_THREADS];
    
 // ## You may add your own initialization routines here ##
 void init(){
-
 	for (int i = 0;i < (int)(NUM_THREADS/4);++i){
 	   ints[i]=i;
       ints[i+(int)(NUM_THREADS/4)]=i+(int)(NUM_THREADS/4);
       ints[i+(int)(2*NUM_THREADS/4)]=i+(int)(2*NUM_THREADS/4);  
       ints[i+(int)(3*NUM_THREADS/4)]=i+(int)(3*NUM_THREADS/4); 
    }
-
 }
 
 void *threadedParallelPhysicsEngine(void *thrd_id){
@@ -198,7 +195,6 @@ void *threadedParallelPhysicsEngine(void *thrd_id){
       satelites[i].velocity.y = tmpVelocity[i].y;
    }
    pthread_exit(NULL); 
-
 }
 
 // ## You are asked to make this code parallel ##
@@ -207,6 +203,7 @@ void *threadedParallelPhysicsEngine(void *thrd_id){
 // This is done multiple times in a frame because the Euler integration 
 // is not accurate enough to be done only once
 void parallelPhysicsEngine(){
+
 
    //for (int i = 0;i < NUM_THREADS; ++i) {
    for (int i = 0;i < (int)(NUM_THREADS/2);++i){
@@ -220,7 +217,8 @@ void parallelPhysicsEngine(){
 	   pthread_detach(thread_id[i]);
       pthread_join(thread_id[i+(int)(NUM_THREADS/2)],NULL);
 	   pthread_detach(thread_id[i+(int)(NUM_THREADS/2)]);
-   }   
+   }
+   
 
 }
 
@@ -248,47 +246,18 @@ void *threadedParallelGraphicsEngine(void *thrd_id){
 	   color tmpRenderColor = {.red = 0.f, .green = 0.f, .blue = 0.f};
       // Find closest satelite
       float shortestDistance2 = INFINITY;
-      float dist2s[SATELITE_COUNT];
 
       float inverseWeights = 0.f;
       int hitsSatellite = 0;
-      int N = 4; // Unrolling factor, optimal compared to 2 and 8
-
-      // Distance-to-satelite loop
-      for (int k = 0; k < (int)(SATELITE_COUNT/N); ++k){
-         floatvector diff0 = {.x = pixel.x - satelites[k].position.x,
-                              .y = pixel.y - satelites[k].position.y};
-         floatvector diff1 = {.x = pixel.x - satelites[k+1].position.x,
-                              .y = pixel.y - satelites[k+1].position.y};
-         floatvector diff2 = {.x = pixel.x - satelites[k+2].position.x,
-                              .y = pixel.y - satelites[k+2].position.y};
-         floatvector diff3 = {.x = pixel.x - satelites[k+3].position.x,
-                              .y = pixel.y - satelites[k+3].position.y};
-         // floatvector difference4 = {.x = pixel.x - satelites[k+4].position.x,
-         //                           .y = pixel.y - satelites[k+4].position.y};
-         // floatvector difference5 = {.x = pixel.x - satelites[k+5].position.x,
-         //                           .y = pixel.y - satelites[k+5].position.y};
-         // floatvector difference6 = {.x = pixel.x - satelites[k+6].position.x,
-         //                           .y = pixel.y - satelites[k+6].position.y};
-         // floatvector difference7 = {.x = pixel.x - satelites[k+7].position.x,
-         //                           .y = pixel.y - satelites[k+7].position.y};
-         dist2s[k] = (diff0.x * diff0.x + 
-                     diff0.y * diff0.y);
-         dist2s[k+1] = (diff1.x * diff1.x + 
-                     diff1.y * diff1.y);
-         dist2s[k+2] = (diff2.x * diff2.x + 
-                     diff2.y * diff2.y);
-         dist2s[k+3] = (diff3.x * diff3.x + 
-                     diff3.y * diff3.y);                              
-      }
-
+	  
+	   // floatvector difference[SATELITE_COUNT];
+      // float distance2[SATELITE_COUNT];
       // First Graphics satelite loop: Find the closest satellite.
       for (int j = 0; j < SATELITE_COUNT; ++j){
-         // floatvector difference = {.x = pixel.x - satelites[j].position.x,
-         //                           .y = pixel.y - satelites[j].position.y};
-         // float distance2 = (difference.x * difference.x + 
-         //                       difference.y * difference.y);
-         float distance2 = dist2s[j];
+         floatvector difference = {.x = pixel.x - satelites[j].position.x,
+                                   .y = pixel.y - satelites[j].position.y};
+         float distance2 = (difference.x * difference.x + 
+                               difference.y * difference.y);
          if (distance2 < SATELITE_RADIUS*SATELITE_RADIUS) {
             renderColor.red = 1.0f;
             renderColor.green = 1.0f;
@@ -297,7 +266,7 @@ void *threadedParallelGraphicsEngine(void *thrd_id){
             break;
          } else {
             float weight = 1.0f / (distance2*distance2);
-            inverseWeights += weight;
+            inverseWeights += weight;//(distance2*distance2);
             if(distance2 < shortestDistance2){
                shortestDistance2 = (distance2);
                renderColor = satelites[j].identifier;
@@ -314,19 +283,19 @@ void *threadedParallelGraphicsEngine(void *thrd_id){
       // Second graphics loop: Calculate the color based on distance to every satelite.
 		if (!hitsSatellite) {
        
-         renderColor.red   += tmpRenderColor.red/inverseWeights * 3.0f;                               
+         renderColor.red   = tmpRenderColor.red/inverseWeights * 3.0f;                               
 	                              
-         renderColor.green += tmpRenderColor.green/inverseWeights * 3.0f;
+         renderColor.green = tmpRenderColor.green/inverseWeights * 3.0f;
                               	 
-         renderColor.blue  += tmpRenderColor.blue/inverseWeights * 3.0f;
+         renderColor.blue  = tmpRenderColor.blue/inverseWeights * 3.0f;
             
 		}
       pixels[i] = renderColor;
    }
-
 }
 
 void parallelGraphicsEngine(){
+
 
    //for (int i = 0;i < NUM_THREADS; ++i) {
    for (int i = 0;i < (int)(NUM_THREADS/2);++i){
@@ -341,6 +310,8 @@ void parallelGraphicsEngine(){
       pthread_join(thread_id[i+(int)(NUM_THREADS/2)],NULL);
 	   pthread_detach(thread_id[i+(int)(NUM_THREADS/2)]);
    }   
+
+   
 
 }
 
