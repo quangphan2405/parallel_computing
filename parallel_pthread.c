@@ -14,9 +14,10 @@ VERSION 20.0 - relax physic correctness check
 // most optimizations: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2
 // +vectorization +vectorize-infos: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec
 // +math relaxation:  gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math
-// +fma: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mfma
-// +unroll-loops: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mfma -funroll-loops
-// +pthread: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mfma -funroll-loops -pthread
+// +avx2: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2
+// +fma: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma
+// +unroll-loops: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -funroll-loops
+// +pthread: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -funroll-loops -pthread
 
 // Example compilation on macos X
 // no optimization:   gcc -o parallel_p parallel_pthread.c -std=c99 -framework GLUT -framework OpenGL
@@ -152,13 +153,13 @@ void *threadedParallelPhysicsEngine(void *thrd_id){
 	   tmpVelocity[i].y = satelites[i].velocity.y;
    }
 
-   // Physics satelite loop
-   for(int i = start_index; i < end_index; ++i){
-   
-      // Physics iteration loop
-      for(int physicsUpdateIndex = 0; 
+   // Physics iteration loop
+   for(int physicsUpdateIndex = 0; 
           physicsUpdateIndex < PHYSICSUPDATESPERFRAME;
-         ++physicsUpdateIndex){      
+         ++physicsUpdateIndex){     
+   
+      // Physics satelite loop
+      for(int i = start_index; i < end_index; ++i){         
 
          // Distance to the blackhole (bit ugly code because C-struct cannot have member functions)
          doublevector positionToBlackHole = {.x = tmpPosition[i].x - HORIZONTAL_CENTER,
@@ -187,10 +188,12 @@ void *threadedParallelPhysicsEngine(void *thrd_id){
          tmpPosition[i].y +=
            tmpVelocity[i].y * DELTATIME / PHYSICSUPDATESPERFRAME;
       }
+   }
 
-      // double precision required for accumulation inside this routine,
-      // but float storage is ok outside these loops.
-      // copy back the float storage.
+   // double precision required for accumulation inside this routine,
+   // but float storage is ok outside these loops.
+   // copy back the float storage.   
+   for(int i = start_index; i < end_index; ++i){   
       satelites[i].position.x = tmpPosition[i].x;
       satelites[i].position.y = tmpPosition[i].y;
       satelites[i].velocity.x = tmpVelocity[i].x;

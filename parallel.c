@@ -14,8 +14,10 @@ VERSION 20.0 - relax physic correctness check
 // most optimizations: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2
 // +vectorization +vectorize-infos: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec
 // +math relaxation:  gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math
-// prev and OpenMP:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -fopenmp
-// prev and OpenCL:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -fopenmp -lOpenCL
+// +avx2: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2
+// +fma: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma
+// prev and OpenMP:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -fopenmp
+// prev and OpenCL:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -fopenmp -lOpenCL
 
 // Example compilation on macos X
 // no optimization:   gcc -o parallel parallel.c -std=c99 -framework GLUT -framework OpenGL
@@ -131,7 +133,7 @@ void parallelPhysicsEngine(){
    // but float storage is ok outside these loops.
    doublevector tmpPosition[SATELITE_COUNT];
    doublevector tmpVelocity[SATELITE_COUNT];
-   // #pragma omp num_thread(12) parallel for
+   
    #pragma omp simd
    for (int i = 0; i < SATELITE_COUNT; ++i) {
        tmpPosition[i].x = satelites[i].position.x;
@@ -140,13 +142,14 @@ void parallelPhysicsEngine(){
        tmpVelocity[i].y = satelites[i].velocity.y;
    }
 
-   // Physics iteration loop
-   for(int physicsUpdateIndex = 0; 
-       physicsUpdateIndex < PHYSICSUPDATESPERFRAME;
-      ++physicsUpdateIndex){
+   // Physics satelite loop
+   #pragma omp parallel for  
+   for(int i = 0; i < SATELITE_COUNT; ++i){  
 
-      // Physics satelite loop
-      for(int i = 0; i < SATELITE_COUNT; ++i){         
+      // Physics iteration loop    
+         for(int physicsUpdateIndex = 0; 
+            physicsUpdateIndex < PHYSICSUPDATESPERFRAME;
+            ++physicsUpdateIndex){ 
 
          // Distance to the blackhole (bit ugly code because C-struct cannot have member functions)
          doublevector positionToBlackHole = {.x = tmpPosition[i].x -
@@ -183,7 +186,7 @@ void parallelPhysicsEngine(){
    // double precision required for accumulation inside this routine,
    // but float storage is ok outside these loops.
    // copy back the float storage.
-   // #pragma omp num_thread(12) parallel for
+   
    #pragma omp simd
    for (int i = 0; i < SATELITE_COUNT; ++i) {
        satelites[i].position.x = tmpPosition[i].x;
@@ -240,9 +243,11 @@ void parallelGraphicsEngine(){
                shortestDistance = distance;
                renderColor = satelites[j].identifier;
             }
+            
             red += satelites[j].identifier.red*weight;
             green += satelites[j].identifier.green*weight;
             blue += satelites[j].identifier.blue*weight;
+            
          }
       }
 
