@@ -10,16 +10,17 @@ VERSION 20.0 - relax physic correctness check
 */
 
 // Example compilation on linux
-// no optimization:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm
-// most optimizations: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2
-// +vectorization +vectorize-infos: gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec
-// +math relaxation:  gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -pthread
-// prev and OpenMP:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -fopenmp
-// prev and OpenCL:   gcc -o parallel parallel.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -fopenmp -lOpenCL
+// no optimization:   gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm
+// most optimizations: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2
+// +vectorization +vectorize-infos: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec
+// +math relaxation:  gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math
+// +fma: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mfma
+// +unroll-loops: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mfma -funroll-loops
+// +pthread: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mfma -funroll-loops -pthread
 
 // Example compilation on macos X
-// no optimization:   gcc -o parallel parallel.c -std=c99 -framework GLUT -framework OpenGL
-// most optimization: gcc -o parallel parallel.c -std=c99 -framework GLUT -framework OpenGL -O3
+// no optimization:   gcc -o parallel_p parallel_pthread.c -std=c99 -framework GLUT -framework OpenGL
+// most optimization: gcc -o parallel_p parallel_pthread.c -std=c99 -framework GLUT -framework OpenGL -O3
 
 
 
