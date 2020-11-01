@@ -275,18 +275,18 @@ void *threadedParallelGraphicsEngine(void *thrd_id){
 	  
       // First Graphics satelite loop: Find the closest satellite.
       for (int j = 0; j < SATELITE_COUNT; ++j){
-         float distance2 = (dist2s[j]);
-         if (distance2 < SATELITE_RADIUS*SATELITE_RADIUS) {
+         float dist2 = (dist2s[j]);
+         if (dist2 < SATELITE_RADIUS*SATELITE_RADIUS) {
             renderColor.red = 1.0f;
             renderColor.green = 1.0f;
             renderColor.blue = 1.0f;
             hitsSatellite = 1;
             break;
          } else {
-            float weight = 1.0f / (distance2*distance2);
+            float weight = 1.0f / (dist2*dist2);
             weights += weight;
-            if(distance2 < shortestDistance2){
-               shortestDistance2 = distance2;
+            if(dist2 < shortestDistance2){
+               shortestDistance2 = dist2;
                renderColor = satelites[j].identifier;
             }
             // Increase color through temporary variables
@@ -301,11 +301,11 @@ void *threadedParallelGraphicsEngine(void *thrd_id){
       // Second graphics loop: Calculate the color based on distance to every satelite.
 		if (!hitsSatellite) {
        
-         renderColor.red   = red/weights * 3.0f;                               
+         renderColor.red   += red/weights * 3.0f;                               
 	                              
-         renderColor.green = green/weights * 3.0f;
+         renderColor.green += green/weights * 3.0f;
                               	 
-         renderColor.blue  = blue/weights * 3.0f;
+         renderColor.blue  += blue/weights * 3.0f;
             
 		}
       pixels[i] = renderColor;
@@ -495,41 +495,20 @@ void errorCheck(){
 void compute(void){
    int timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
    previousFrameTimeSinceStart = timeSinceStart;
-	
+
    // Error check during first frames
    if (frameNumber < 2) {
-	  memcpy(backupSatelites, satelites, sizeof(satelite) * SATELITE_COUNT);
+      memcpy(backupSatelites, satelites, sizeof(satelite) * SATELITE_COUNT);
       sequentialPhysicsEngine(backupSatelites);
-	  
-		
    }
    parallelPhysicsEngine();
    if (frameNumber < 2) {
-	   FILE *fptr = fopen("program.txt", "w");
       for (int i = 0; i < SATELITE_COUNT; i++) {
-		  
-		
-		
          if (memcmp (&satelites[i], &backupSatelites[i], sizeof(satelite))) {
-			   // Init satelites buffer which are moving in the space
-			//satelite* data = (data*)malloc(sizeof(satelite));
-			// memcpy(&data, &satelites[i], sizeof satelites);
-			// memcpy(&data2, &backupSatelites[i], sizeof satelites);
-			
-			// for (size_t j=0; j < sizeof (satelite); ++j) {
-				 fprintf(fptr, "%d\n", memcmp (&satelites[i], &backupSatelites[i], sizeof(satelite)));
-				 
-				 //fprintf(fptr, "Sat[%d](%d) = %02x\n", i,j,*((&backupSatelites[i]+j)));
-				 //fprintf(fptr, "BSat[%d](%d) = %02hhx\n", i,j,backupSatelites[j]);
-			// }
-			 
-			 
-			//fprintf(fptr, "BSat_%d = %x\n\n", i,backupSatelites[i]);
             printf("Incorrect satelite data of satelite: %d\n", i);
-            //getchar();
+            getchar();
          }
       }
-	  fclose(fptr);
    }
 
    int sateliteMovementMoment = glutGet(GLUT_ELAPSED_TIME);
@@ -544,7 +523,7 @@ void compute(void){
    // Sequential code is used to check possible errors in the parallel version
    if(frameNumber < 2){
       sequentialGraphicsEngine();
-  //    errorCheck();
+      errorCheck();
    }
 
    int finishTime = glutGet(GLUT_ELAPSED_TIME);
@@ -651,7 +630,7 @@ int main(int argc, char** argv){
      seed = atoi(argv[1]);
      printf("Using seed: %i\n", seed);
    }
-   printf("Ran");
+
    // Init glut window
    glutInit(&argc, argv);
    glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
