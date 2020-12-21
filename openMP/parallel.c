@@ -167,14 +167,12 @@ void parallelPhysicsEngine(){
 
          // Delta time is used to make velocity same despite different FPS
          // Update velocity based on force
-         // #pragma omp critical
          tmpVelocity[i].x -= accumulation * normalizedDirection.x *
             DELTATIME / PHYSICSUPDATESPERFRAME;
          tmpVelocity[i].y -= accumulation * normalizedDirection.y *
             DELTATIME / PHYSICSUPDATESPERFRAME;
 
          // Update position based on velocity
-         // #pragma omp critical
          tmpPosition[i].x +=
             tmpVelocity[i].x * DELTATIME / PHYSICSUPDATESPERFRAME;
          tmpPosition[i].y +=

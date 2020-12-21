@@ -16,8 +16,7 @@ VERSION 20.0 - relax physic correctness check
 // +math relaxation:  gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math
 // +avx2: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2
 // +fma: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma
-// +unroll-loops: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -funroll-loops
-// +pthread: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -funroll-loops -pthread
+// +pthread: gcc -o parallel_p parallel_pthread.c -std=c99 -lglut -lGL -lm -O2 -ftree-vectorize -fopt-info-vec -ffast-math -mavx2 -mfma -pthread
 
 // Example compilation on macos X
 // no optimization:   gcc -o parallel_p parallel_pthread.c -std=c99 -framework GLUT -framework OpenGL
